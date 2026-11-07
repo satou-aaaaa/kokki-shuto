@@ -135,12 +135,13 @@ const addDay = (k, n) => new Date(Date.parse(k) + n * 864e5).toISOString().slice
       "最後に足す（from が日付でない 2027-2-01）": [run(base + line("2027-2-01") + "\n"), false],
       "最後に足す（from が無い日 2027-02-30）": [run(base + line("2027-02-30") + "\n"), false],
       "最後に足す（from が今日）": [run(base + line(next(0)) + "\n"), false],
+      "最後に前の国と同じ id を足す（pl）": [run(base + line(next(30)).replace(/^zz/, "pl") + "\n"), false],
       "足した国の from をあとで変える": [run(base + line(next(30)) + "\n", base + line(next(31)) + "\n"), false],
       "足した国の from をあとで消す": [run(base + line(next(30)) + "\n", base + line() + "\n"), false],
       "足した国のあとにもう1つ足す": [run(base + line(next(30)) + "\n", base + line(next(30)) + "\n" + line(next(40)).replace(/^zz/, "zy") + "\n"), true],
     };
     const wrong = Object.entries(cases).filter(([, [got, want]]) => got !== want).map(([k]) => k);
-    check("国の表の生成：最後に from（あしたより後の日）付きで足すときだけ通り、途中に足す・from なし・日付でない・今日より前・足した国の from を変える／消すは止まる", wrong.length === 0, wrong.join(","));
+    check("国の表の生成：最後に from（あしたより後の日）付きで足すときだけ通り、途中に足す・同じ id・from なし・日付でない・今日より前・足した国の from を変える／消すは止まる", wrong.length === 0, wrong.join(","));
   }
 }
 

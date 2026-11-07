@@ -37,6 +37,8 @@ for (const [id, n, formal, cap, region, from] of rows) {
   const g = LOOK.map((x, i) => (x.includes(id) ? "l" + i : "")).filter(Boolean);
   D.push({ id, cat: CAT[region], lv: LV0.includes(id) ? 0 : LV2.includes(id) ? 2 : 1, n, f, m, cap: hasCap ? cap : "", c: okC ? 1 : 0, ...(g.length ? { g } : {}), ...(from ? { from } : {}) });
 }
+// 同じ国を2回書かない（あとの行が前の国を上書きし、過去の日の問題が変わる）
+{ const seen = new Set(); for (const r of rows) { if (seen.has(r[0])) throw new Error("同じ国が2回ある " + r[0]); seen.add(r[0]); } }
 for (const x of LV0.concat(LV2)) if (!D.some((y) => y.id === x)) throw new Error("表に無い " + x);
 
 // 国旗を写す（使う国だけ）

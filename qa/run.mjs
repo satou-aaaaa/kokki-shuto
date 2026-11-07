@@ -106,6 +106,42 @@ const addDay = (k, n) => new Date(Date.parse(k) + n * 864e5).toISOString().slice
     check(`国を足しても（from ${FROM}）、その日より前の今日の5問・上級・選び肢は変わらない（3年分）`, changed.length === 0 && at > 0, changed.slice(0, 5).join(","));
     check("足した国は from の日から出てくる・5問の形は保つ", used > 0 && badNew === 0, JSON.stringify({ used, badNew }));
   }
+  // 生成（tools/make-data.cjs）が、過去の日の問題を変える表を受けつけない（一時フォルダに写して動かす）
+  {
+    const { spawnSync } = await import("node:child_process");
+    const { mkdtempSync, copyFileSync, rmSync } = await import("node:fs");
+    const os = await import("node:os");
+    const base = readFileSync(path.join(root, "tools/countries.tsv"), "utf8").replace(/\n*$/, "\n");
+    const line = (from) => ["zz", "キューエー", "キューエー共和国", "キューエー市", "欧州", ...(from === undefined ? [] : [from])].join("\t");
+    const next = (n) => new Date(Date.now() + 9 * 3600e3 + n * 864e5).toISOString().slice(0, 10);
+    const run = (...tsvs) => {
+      const d = mkdtempSync(path.join(os.tmpdir(), "kokki-gen-"));
+      try {
+        mkdirSync(path.join(d, "tools"));
+        copyFileSync(path.join(root, "tools/make-data.cjs"), path.join(d, "tools/make-data.cjs"));
+        for (const f of ["data.js", "sw.js"]) copyFileSync(path.join(root, f), path.join(d, f));
+        // いくつか渡したときは順に生成し、前のものが通ったうえで最後が通るか
+        let ok = true;
+        for (const tsv of tsvs) { writeFileSync(path.join(d, "tools/countries.tsv"), tsv); ok = spawnSync(process.execPath, [path.join(d, "tools/make-data.cjs")], { encoding: "utf8" }).status === 0; if (!ok) break; }
+        return ok;
+      } finally { rmSync(d, { recursive: true, force: true }); }
+    };
+    const rows = base.split("\n"), mid = rows.findIndex((l) => l && !l.startsWith("#")) + 3;
+    const cases = {
+      "そのまま": [run(base), true],
+      "最後に足す（from あしたより後）": [run(base + line(next(30)) + "\n"), true],
+      "途中に足す": [run([...rows.slice(0, mid), line(next(30)), ...rows.slice(mid)].join("\n")), false],
+      "最後に足す（from なし）": [run(base + line() + "\n"), false],
+      "最後に足す（from が日付でない 2027-2-01）": [run(base + line("2027-2-01") + "\n"), false],
+      "最後に足す（from が無い日 2027-02-30）": [run(base + line("2027-02-30") + "\n"), false],
+      "最後に足す（from が今日）": [run(base + line(next(0)) + "\n"), false],
+      "足した国の from をあとで変える": [run(base + line(next(30)) + "\n", base + line(next(31)) + "\n"), false],
+      "足した国の from をあとで消す": [run(base + line(next(30)) + "\n", base + line() + "\n"), false],
+      "足した国のあとにもう1つ足す": [run(base + line(next(30)) + "\n", base + line(next(30)) + "\n" + line(next(40)).replace(/^zz/, "zy") + "\n"), true],
+    };
+    const wrong = Object.entries(cases).filter(([, [got, want]]) => got !== want).map(([k]) => k);
+    check("国の表の生成：最後に from（あしたより後の日）付きで足すときだけ通り、途中に足す・from なし・日付でない・今日より前・足した国の from を変える／消すは止まる", wrong.length === 0, wrong.join(","));
+  }
 }
 
 // ---- 2. ファイルの中身 ----
@@ -130,7 +166,7 @@ check("README の URL のすぐ後ろに全角の字を続けない（Link check
 { const sw = readFileSync(path.join(root, "sw.js"), "utf8"), mf = JSON.parse(readFileSync(path.join(root, "manifest.webmanifest"), "utf8"));
   const shell = JSON.parse(sw.match(/SHELL = (\[[^\]]+\])/)[1]);
   check("PWA：sw.js は画面のファイルを全部保存し（引き継ぎの transfer.js も）、取り直して保存し、外へ何も送らない", ["./index.html", "./data.js", "./transfer.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"].every((f) => shell.includes(f)) && /cache: "reload"/.test(sw) && !/https?:\/\//.test(sw.replace(/^\/\/.*$/gm, "")));
-  { const fl = JSON.parse(sw.match(/const FLAGS = (\[[^\]]*\])/)[1]); check("PWA：国旗は全部の国の分を保存し、1枚取れなくても入れる（画面のファイルだけ addAll）", fl.length === G.D.length && G.D.every((x) => fl.includes(`./flags/${x.id}.svg`)) && /c\.addAll\(SHELL\.map/.test(sw) && /FLAGS\.map\(\(u\) => c\.add\([^)]*\)\)\.catch/.test(sw)); }
+  { const fl = JSON.parse(sw.match(/const FLAGS = (\[[^\]]*\])/)[1]); check("PWA：国旗は全部の国の分を保存し、1枚取れなくても・止まっても（15秒で打ち切る）入れる（画面のファイルだけ addAll）", fl.length === G.D.length && G.D.every((x) => fl.includes(`./flags/${x.id}.svg`)) && /c\.addAll\(SHELL\.map/.test(sw) && /FLAGS\.map\(\(u\) => addFlag\(c, u\)\)/.test(sw) && /setTimeout\(\(\) => ac\.abort\(\), 15000\)/.test(sw) && /signal: ac\.signal/.test(sw) && /\.catch\(\(\) => \{\}\)/.test(sw)); }
   { const st = await checkSwStall(sw); check("PWA：本文の途中で通信が止まっても、4秒で保存した画面を返す（qa/sw-check.mjs）", st.ok, JSON.stringify(st)); }
   check("PWA：manifest にアイコン2つと名前がある", mf.name === "国旗と首都" && mf.icons.length >= 2 && mf.start_url === "./"); }
 

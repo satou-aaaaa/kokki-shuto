@@ -51,9 +51,19 @@ if (src) {
 
 const file = path.join(ROOT, "data.js"), js = fs.readFileSync(file, "utf8");
 // 今の D の並びが、新しい D の頭とそろっているか（国は countries.tsv の最後に足すだけ。途中に足す・消すと過去の日の問題が変わる）
-const old = [...(/\/\/ ==D==\n([\s\S]*?)  \/\/ ==D==/.exec(js) || ["", ""])[1].matchAll(/"id":"([a-z]+)"/g)].map((m) => m[1]);
-if (old.some((id, i) => D[i]?.id !== id)) throw new Error("国の並びが変わる：countries.tsv の最後に足すだけにする（途中に足す・消すと過去の日の問題が変わる）");
-for (const x of D.slice(old.length)) if (old.length && !x.from) throw new Error(`足した国 ${x.id} に from（6列目：出しはじめる日）が無い`);
+const old = [...(/\/\/ ==D==\n([\s\S]*?)  \/\/ ==D==/.exec(js) || ["", ""])[1].split("\n")].map((l) => /^\s*(\{.*\}),$/.exec(l)).filter(Boolean).map((m) => JSON.parse(m[1]));
+// 国の並びと、出しはじめる日（from）は前のまま（変えると、その国が出る日・選び肢が変わり、過去の日の問題が変わる）
+const bad = old.findIndex((o, i) => D[i]?.id !== o.id || (D[i]?.from || "") !== (o.from || ""));
+if (bad >= 0) throw new Error(`国の並びか from が変わる（${old[bad].id}）：countries.tsv の最後に足すだけにし、足した国の from も変えない（過去の日の問題が変わる）`);
+// 足した国の from は、あしたより後の、ほんとうにある日（YYYY-MM-DD）。今日より前だと、もう遊んだ日の問題が変わる
+const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+const realDay = (s) => { const d = new Date(s + "T00:00:00Z"); return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(d) && d.toISOString().slice(0, 10) === s; };
+for (const x of D.slice(old.length)) {
+  if (!old.length) break;
+  if (!x.from) throw new Error(`足した国 ${x.id} に from（6列目：出しはじめる日）が無い`);
+  if (!realDay(x.from)) throw new Error(`足した国 ${x.id} の from「${x.from}」が YYYY-MM-DD の日付でない`);
+  if (x.from <= today) throw new Error(`足した国 ${x.id} の from ${x.from} が今日（${today}）より前：あした以降にする（遊んだ日の問題が変わる）`);
+}
 const body = "  const D = [\n" + D.map((x) => "    " + JSON.stringify(x) + ",").join("\n") + "\n  ];\n";
 const out = js.replace(/(\/\/ ==D==\n)[\s\S]*?(  \/\/ ==D==)/, (_, a, b) => a + body + b);
 if (out === js && !js.includes(body)) throw new Error("data.js に「// ==D==」の印が無い");

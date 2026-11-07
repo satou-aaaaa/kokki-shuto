@@ -20,7 +20,7 @@ const MASK = { gb: "◯◯（グレートブリテン及び北アイルランド
 
 const rows = fs.readFileSync(path.join(__dirname, "countries.tsv"), "utf8").split("\n").filter((l) => l && !l.startsWith("#")).map((l) => l.split("\t"));
 const D = [];
-for (const [id, n, formal, cap, region] of rows) {
+for (const [id, n, formal, cap, region, from] of rows) {
   if (SKIP[id]) continue;
   if (!CAT[region]) throw new Error("知らない地域 " + region);
   const f = formal.replace(/（注[０-９0-9]+）/g, "");
@@ -35,7 +35,7 @@ for (const [id, n, formal, cap, region] of rows) {
   // 首都から当てる問題：首都の名前に国の名前が入っているもの（クウェート・モナコなど）は出さない
   const okC = hasCap && !cap.includes(head) && !n.includes(cap.replace(/市$/, ""));
   const g = LOOK.map((x, i) => (x.includes(id) ? "l" + i : "")).filter(Boolean);
-  D.push({ id, cat: CAT[region], lv: LV0.includes(id) ? 0 : LV2.includes(id) ? 2 : 1, n, f, m, cap: hasCap ? cap : "", c: okC ? 1 : 0, ...(g.length ? { g } : {}) });
+  D.push({ id, cat: CAT[region], lv: LV0.includes(id) ? 0 : LV2.includes(id) ? 2 : 1, n, f, m, cap: hasCap ? cap : "", c: okC ? 1 : 0, ...(g.length ? { g } : {}), ...(from ? { from } : {}) });
 }
 for (const x of LV0.concat(LV2)) if (!D.some((y) => y.id === x)) throw new Error("表に無い " + x);
 
@@ -50,6 +50,10 @@ if (src) {
 }
 
 const file = path.join(ROOT, "data.js"), js = fs.readFileSync(file, "utf8");
+// 今の D の並びが、新しい D の頭とそろっているか（国は countries.tsv の最後に足すだけ。途中に足す・消すと過去の日の問題が変わる）
+const old = [...(/\/\/ ==D==\n([\s\S]*?)  \/\/ ==D==/.exec(js) || ["", ""])[1].matchAll(/"id":"([a-z]+)"/g)].map((m) => m[1]);
+if (old.some((id, i) => D[i]?.id !== id)) throw new Error("国の並びが変わる：countries.tsv の最後に足すだけにする（途中に足す・消すと過去の日の問題が変わる）");
+for (const x of D.slice(old.length)) if (old.length && !x.from) throw new Error(`足した国 ${x.id} に from（6列目：出しはじめる日）が無い`);
 const body = "  const D = [\n" + D.map((x) => "    " + JSON.stringify(x) + ",").join("\n") + "\n  ];\n";
 const out = js.replace(/(\/\/ ==D==\n)[\s\S]*?(  \/\/ ==D==)/, (_, a, b) => a + body + b);
 if (out === js && !js.includes(body)) throw new Error("data.js に「// ==D==」の印が無い");

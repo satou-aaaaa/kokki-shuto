@@ -10,7 +10,9 @@ const FLAGS = ["./flags/is.svg","./flags/ie.svg","./flags/az.svg","./flags/us.sv
 
 self.addEventListener("install", (e) => {
   // GitHub Pages が保存させる古い画面を入れないよう、取り直してから保存する
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.concat(FLAGS).map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
+  // 画面のファイルは全部そろったときだけ入れる。国旗は1枚ずつ入れ、取れなかった国旗があっても入れる（使うときにネットから取り、保存し直す）
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))
+    .then(() => Promise.all(FLAGS.map((u) => c.add(new Request(u, { cache: "reload" })).catch(() => {}))))).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys()

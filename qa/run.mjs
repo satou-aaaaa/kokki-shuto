@@ -130,6 +130,7 @@ check("README の URL のすぐ後ろに全角の字を続けない（Link check
 { const sw = readFileSync(path.join(root, "sw.js"), "utf8"), mf = JSON.parse(readFileSync(path.join(root, "manifest.webmanifest"), "utf8"));
   const shell = JSON.parse(sw.match(/SHELL = (\[[^\]]+\])/)[1]);
   check("PWA：sw.js は画面のファイルを全部保存し（引き継ぎの transfer.js も）、取り直して保存し、外へ何も送らない", ["./index.html", "./data.js", "./transfer.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"].every((f) => shell.includes(f)) && /cache: "reload"/.test(sw) && !/https?:\/\//.test(sw.replace(/^\/\/.*$/gm, "")));
+  { const fl = JSON.parse(sw.match(/const FLAGS = (\[[^\]]*\])/)[1]); check("PWA：国旗は全部の国の分を保存し、1枚取れなくても入れる（画面のファイルだけ addAll）", fl.length === G.D.length && G.D.every((x) => fl.includes(`./flags/${x.id}.svg`)) && /c\.addAll\(SHELL\.map/.test(sw) && /FLAGS\.map\(\(u\) => c\.add\([^)]*\)\)\.catch/.test(sw)); }
   { const st = await checkSwStall(sw); check("PWA：本文の途中で通信が止まっても、4秒で保存した画面を返す（qa/sw-check.mjs）", st.ok, JSON.stringify(st)); }
   check("PWA：manifest にアイコン2つと名前がある", mf.name === "国旗と首都" && mf.icons.length >= 2 && mf.start_url === "./"); }
 

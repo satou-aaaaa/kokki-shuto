@@ -272,6 +272,7 @@ try {
   check("手がかりは3つまで（3つ聞くとボタンが止まる）", await p.locator("#hint:disabled").count() === 1 && await p.locator(".clue:not(.wait)").count() === 3);
   await solve(p);
   check("手がかりを2つ足したら★1", (await p.getAttribute(".verdict .stars", "aria-label")) === "星1つ");
+  check("星は role=img で「星1つ」と読まれ、取れなかった星は ☆ で出す（色だけで分けない）", await p.getAttribute(".verdict .stars", "role") === "img" && (await p.textContent(".verdict .stars")) === "★☆☆" && await p.getAttribute(".verdict .stars .off", "aria-hidden") === "true");
   await p.click("#next");
   for (let i = 2; i < 5; i++) { await solve(p); await p.click("#next"); }
   await p.waitForTimeout(150);
@@ -452,6 +453,37 @@ try {
   const sample = { "kokki-v1": JSON.stringify({ v: 1, tut: true, days: { "2026-11-07": { m: [0, 1, 0, 0, 2], k: ["jp", "fr", "ke", "pe", "tv"] } }, hdays: {}, adays: {}, dex: { jp: 1, fr: 1, ke: 1, pe: 1, tv: 1 }, runs: {}, kofi: {}, ach: {}, ebest: 7, t: 1 }) };
   await checkTransfer({ browser, url, game: "kokki-shuto", sample, check, open: async (pg) => { if (await pg.locator("#howto[open]").count()) await pg.click("#howto-ok"); } });
 } catch (e) { check("引き継ぎの検査が最後まで動く", false, e.message.split("\n")[0]); }
+  try { // ホームの題（h1.title）は縦長の画面でも縦に伸びない（上の帯の h1{flex:1} を受け継ぐと余った高さを取る。shared-workflows incidents/2026-11-07-title-stretched.md）
+    const c = await browser.newContext(), q = await c.newPage(), big = [];
+    for (const [w, h] of [[390, 844], [820, 1180]]) {
+      await q.setViewportSize({ width: w, height: h }); await q.goto(url); await q.waitForTimeout(200); await q.keyboard.press("Escape"); await q.waitForTimeout(100);
+      const v = await q.evaluate(() => { const e = document.querySelector("h1.title"); return e ? [e.getBoundingClientRect().height, parseFloat(getComputedStyle(e).fontSize)] : null; });
+      if (!v || v[0] > v[1] * 2) big.push(`${w}x${h}:${v ? Math.round(v[0]) + "px（字 " + v[1] + "px）" : "題なし"}`);
+    }
+    check("ホームの題（h1.title）の高さは、390×844 と 820×1180 で字の高さの2倍まで（縦に伸びない）", big.length === 0, big.join(" "));
+    await c.close();
+  } catch (e) { check("ホームの題（h1.title）の高さは、390×844 と 820×1180 で字の高さの2倍まで（縦に伸びない）", false, e.message.split("\n")[0]); }
+  try { // 保存できないとき：帯 #savewarn で知らせ、2秒たっても残し、保存できるようになったら消す（黙っていると開き直したとき記録が消える。shared-workflows incidents/2026-11-07-save-failure-silent.md）
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await c.addInitScript(() => { window.__origSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function () { throw new Error("QuotaExceededError"); }; });
+    const q = await c.newPage(); await q.goto(url); await q.waitForTimeout(300);
+    if (!(await q.locator("#howto[open]").count())) await q.click("#f-how");
+    await q.click("#howto-ok"); await q.waitForTimeout(100);
+    const n1 = await q.locator("#savewarn").count(); await q.waitForTimeout(2000); const n2 = await q.locator("#savewarn").count();
+    await q.evaluate(() => { Storage.prototype.setItem = window.__origSetItem; });
+    await q.click("#f-how"); await q.click("#howto-ok"); await q.waitForTimeout(100);
+    const n3 = await q.locator("#savewarn").count();
+    check("保存できないときは帯（#savewarn）を1つ出し、2秒たっても残る。保存できるようになると消える", n1 === 1 && n2 === 1 && n3 === 0, [n1, n2, n3].join(","));
+    await c.close();
+  } catch (e) { check("保存できないときは帯（#savewarn）を1つ出し、2秒たっても残る。保存できるようになると消える", false, e.message.split("\n")[0]); }
+  try { // 知らせ（.toast）が出ているあいだも、その下のボタンを押せる（pointer-events:none。2026-11-17 全ゲームの点検）
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const q = await c.newPage(); await q.goto(url); await q.waitForTimeout(300);
+    await q.evaluate(() => { const d = document.getElementById("howto"); if (d && d.open) d.close(); toast("知らせの検査"); });
+    const t = await q.evaluate(() => { const e = document.querySelector(".toast"); if (!e) return "知らせが出ない"; const r = e.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return [getComputedStyle(e).pointerEvents, hit && (hit === e || e.contains(hit)) ? "知らせが受ける" : "下が受ける"].join(","); });
+    check("知らせ（.toast）が出ているあいだも、その下を押せる（pointer-events が none）", t === "none,下が受ける", t);
+    await c.close();
+  } catch (e) { check("知らせ（.toast）が出ているあいだも、その下を押せる（pointer-events が none）", false, e.message.split("\n")[0]); }
 await browser.close();
 server.close();
 check("画面のエラーが無い", errors.length === 0, errors.slice(0, 3).join(" | "));

@@ -53,7 +53,7 @@ button.sub:disabled,button.main:disabled{opacity:.45;cursor:default}
 .big{font-family:var(--f-brush);font-weight:900;font-size:1.5rem;text-align:center;margin:0;line-height:1.35}
 /* 夜空の帯（ホームの題） */
 .sky{position:relative;background:linear-gradient(180deg,var(--night2),var(--night));color:var(--moon);border-radius:16px;padding:22px 16px 18px;text-align:center;overflow:hidden;box-shadow:0 6px 16px #1e234033}
-.sky .title{font-family:var(--f-brush);font-weight:900;font-size:2.2rem;letter-spacing:.16em;margin:0;color:var(--moon)}
+.sky .title{flex:none;font-family:var(--f-brush);font-weight:900;font-size:2.2rem;letter-spacing:.16em;margin:0;color:var(--moon)}
 .sky .lead{margin:6px 0 0;font-size:.92rem;line-height:1.7;color:#e6dcc0}
 .sky .lamps{display:flex;justify-content:center;gap:18px;margin-top:10px;font-size:1.4rem}
 /* 手帳（手がかり） */
@@ -163,7 +163,7 @@ dialog#howto h2{font-family:var(--f-brush);margin:0 0 10px;letter-spacing:.1em}
 dialog#howto ol{padding-left:1.3em;margin:0 0 12px;line-height:1.8}
 dialog#howto p{margin:0 0 10px;font-size:.9rem;line-height:1.7;color:var(--ink2)}
 dialog#howto a{color:var(--shu2);min-height:44px;display:inline-flex;align-items:center}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-weight:700;z-index:9;box-shadow:0 6px 20px #0005;max-width:90%;text-align:center;font-size:1rem}
+.toast{pointer-events:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-weight:700;z-index:9;box-shadow:0 6px 20px #0005;max-width:90%;text-align:center;font-size:1rem}
 footer{margin-top:auto;text-align:center;font-size:.8rem;color:var(--ink2);display:flex;gap:4px 14px;justify-content:center;flex-wrap:wrap}
 footer a{color:var(--ink2);min-height:44px;display:inline-flex;align-items:center}
 /* 色の見分けを助ける：まちがい・正解の印を大きく、縁を太く（印の文字はふだんから出ている） */
@@ -379,7 +379,7 @@ function practiceList(s, cat) {
   const r = k + "~" + rid(); return pool.slice(0, 5).map((x, i) => `${x.id}|${r}:${i}`);
 }
 const starsOf = (m) => (m === 0 ? 3 : m === 1 ? 2 : 1); // m = まちがい＋追加で見た手がかりの数
-const starStr = (s) => `<span class="stars" aria-label="星${s}つ">${"★".repeat(s)}<span class="off">${"☆".repeat(3 - s)}</span></span>`;
+const starStr = (s) => `<span class="stars" role="img" aria-label="星${s}つ">${"★".repeat(s)}<span class="off" aria-hidden="true">${"☆".repeat(3 - s)}</span></span>`; // role="img" で aria-label を読ませる。取れなかった星は ☆（色だけで分けない）
 
 // ---- 記録（この端末の localStorage だけ）----
 // days/hdays/adays：日付 → { m:[1問ごとのまちがい＋手がかり], k:[国の id] }。adays はあとから遊んだ日（連続の日・今日の記録・Ko-fi には数えない）
@@ -439,7 +439,8 @@ function tidy(s) {
   return s;
 }
 // 保存の前に読み直す（別のタブで進めた記録を消さない）
-function save(fn) { const s = load(); fn(s); s.t = Math.max(Date.now(), (s.t || 0) + 1); const j = JSON.stringify(s); try { localStorage.setItem(KEY, j); mem = null; } catch (e) { mem = j; } return s; }
+function saveWarn(on) { let b = document.getElementById("savewarn"); const l = document.getElementById("live"), W = "この端末に記録を保存できませんでした。ページを開き直すと、いまの記録が消えます"; if (!on) { if (b) { b.remove(); if (saveWarn.o) saveWarn.o.disconnect(); if (l && l.textContent.includes(W)) l.textContent = l.textContent.replace(W, "").replace(/^[。\s]+|[。\s]+$/g, ""); } return; } if (b) return; b = document.createElement("div"); b.id = "savewarn"; b.setAttribute("role", "status"); b.textContent = W; b.style.cssText = "position:sticky;top:0;z-index:9999;padding:8px 12px;background:#fff3cd;color:#000;font-size:15px;line-height:1.5;text-align:center;pointer-events:none;border-bottom:2px solid #8a6d00"; (document.body || document.documentElement).prepend(b); if (l) { l.textContent = W; if (window.MutationObserver) { saveWarn.o = new MutationObserver(() => { if (document.getElementById("savewarn") && l.textContent && !l.textContent.includes(W)) l.textContent += "。" + W; }); saveWarn.o.observe(l, { childList: true, characterData: true, subtree: true }); } } } // 帯は画面のいちばん上に場所を取り（ボタンに重ならない）、#live でも読み上げる。ほかの知らせで #live が書き換わっても、保存できないあいだは警告を後ろに付け直す。保存できたら帯と #live の警告を消す（黙って記録が消えないように・古い警告を読み上げないように）
+function save(fn) { const s = load(); fn(s); s.t = Math.max(Date.now(), (s.t || 0) + 1); const j = JSON.stringify(s); try { localStorage.setItem(KEY, j); mem = null; saveWarn(false); } catch (e) { mem = j; saveWarn(true); } return s; }
 function streak(days) { let k = todayKey(), n = 0; if (!days[k]) k = prevDay(k); while (days[k]) { n++; k = prevDay(k); } return n; }
 const playedDays = (s) => new Set([...Object.keys(s.days), ...Object.keys(s.adays)]).size;
 const solvedAll = (s) => Object.values(s.dex).reduce((a, b) => a + (+b || 0), 0);
